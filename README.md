@@ -14,7 +14,7 @@ Notably `broomdog` provides "indefinite loanership".
 
 ### wtf is indefinite loanership?
 
-It's a wordsmush that roughly means you can get a loaned value from the map without
+It's a wordsmush that roughly means you can borrow a value from the map without
 a lifetime.
 
 #### wtf is a loaned value?
