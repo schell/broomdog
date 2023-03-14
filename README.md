@@ -46,7 +46,7 @@ Together it's possible to define and run an extensible system of functions that 
 
 * I think names should be funny.
 
-* It's my library, oh well.
+* It's my library, oh well 😏.
 
 # example
 
