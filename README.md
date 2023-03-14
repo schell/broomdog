@@ -21,7 +21,7 @@ a lifetime.
 
 A loaned value is a smart pointer to a value that you can `deref` or `deref_mut`.
 
-You may only have one exclusive (write) loan of any one value at a time, but you may have as many non-exclusive (read) loans of the same value as you like. You may also have multiple exclusive loans of _different_ types at the same time.
+You may only have one exclusive (write) loan of any one type at a time, but you may have as many non-exclusive (read) loans of the same type as you like. You may also have multiple exclusive loans of _different_ types at the same time.
 
 After an exclusive loan is dropped you may make another exclusive loan of the same type, or multiple non-exclusive loans of that type.
 
