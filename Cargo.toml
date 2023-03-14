@@ -1,0 +1,18 @@
+[package]
+name = "broomdog"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+keywords = ["map", "type", "schedule", "erased"]
+readme = "README.md"
+documentation = "https://docs.rs/broomdog"
+repository = "https://github.com/schell/broomdog"
+categories = ["data-structures"]
+description = "A type-erased map with indefinite loanership."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "^0.4"
+rustc-hash = "^1.1"
+snafu = "^0.7"
