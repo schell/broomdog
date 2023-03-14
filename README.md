@@ -31,13 +31,14 @@ Furthermore, `broomdog` has nice descriptive errors with the names of the types 
 
 ## uses
 
-Type erased maps have many uses, but `broomdog` was to facilitate the following:
+Type erased maps have many uses, but `broomdog` was made to facilitate the following:
 
-* resource storage layer for [`apecs`](https://github.com/schell/apecs)'s system schedule runner (`apecs` is an ECS library)
-* resource storage layer for [`renderling`](https://github.com/schell/renderling)'s render node schedule runner (part of the render graph)
+* singleton resource storage layer for [`apecs`](https://github.com/schell/apecs)'s system schedule runner (`apecs` is an ECS library)
+* singleton resource storage layer for [`renderling`](https://github.com/schell/renderling)'s render node schedule runner (part of the render graph)
 
 It works particularly well with [`dagga`](https://github.com/schell/dagga), which is a DAG scheduler.
 Together it's possible to define and run an extensible system of functions that share mutable resources, some of which may run in parallel.
+
 
 ## why (the heck) did you name it `broomdog`
 
