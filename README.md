@@ -14,14 +14,14 @@ Notably `broomdog` provides "indefinite loanership".
 
 ### wtf is indefinite loanership?
 
-It's a wordsmush that roughly means you can get a loaned value from the map without
+It's a wordsmush that roughly means you can borrow a value from the map without
 a lifetime.
 
 #### wtf is a loaned value?
 
 A loaned value is a smart pointer to a value that you can `deref` or `deref_mut`.
 
-You may only have one exclusive (write) loan of any one value at a time, but you may have as many non-exclusive (read) loans of the same value as you like. You may also have **multiple exclusive loans of _different_ types at the same time**.
+You may only have one exclusive (write) loan of any one type at a time, but you may have as many non-exclusive (read) loans of the same type as you like. You may also have **multiple exclusive loans of _different_ types at the same time**.
 
 After an exclusive loan is dropped you may make another exclusive loan of the same type, or multiple non-exclusive loans of that type.
 
@@ -33,12 +33,13 @@ Furthermore, `broomdog` has nice descriptive errors with the names of the types 
 
 Type erased maps have many uses, but `broomdog` was built to facilitate the following:
 
-* resource storage layer for [`apecs`](https://github.com/schell/apecs)'s system schedule runner (`apecs` is an ECS library)
-* resource storage layer for [`renderling`](https://github.com/schell/renderling)'s render node schedule runner (part of the render graph)
+* singleton resource storage layer for [`apecs`](https://github.com/schell/apecs)'s system schedule runner (`apecs` is an ECS library)
+* singleton resource storage layer for [`renderling`](https://github.com/schell/renderling)'s render node schedule runner (part of the render graph)
 
 It works particularly well with [`dagga`](https://github.com/schell/dagga), which is a DAG scheduler. In fact, `dagga` and `broomdog` are joined in [`moongraph`](https://github.com/schell/moongraph) with some nice helpers to form a DAG scheduling, resource managment and execution library.
 
 Together it's possible to define and run an extensible system of functions that share mutable resources, some of which may run in parallel.
+
 
 ## why (the heck) did you name it `broomdog`
 
@@ -46,7 +47,7 @@ Together it's possible to define and run an extensible system of functions that 
 
 * I think names should be funny.
 
-* It's my library, oh well =P
+* It's my library, oh well 😏.
 
 # example
 
