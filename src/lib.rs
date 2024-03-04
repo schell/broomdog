@@ -53,9 +53,10 @@ pub enum BroomdogErr {
 
     #[snafu(display("Type {name} is already loaned"))]
     Loan { name: &'static str },
-}
 
-pub type Result<T> = std::result::Result<T, BroomdogErr>;
+    #[snafu(display("Types are still loaned: \n{}", names.concat()))]
+    ManyLoans { names: Vec<&'static str> },
+}
 
 /// A key for a type-erased value.
 #[derive(Clone, Copy, Debug)]
@@ -168,7 +169,9 @@ impl TypeValue {
     }
 
     /// Attempt to downcast a reference to the given parameterized type.
-    pub fn downcast_ref<T: Any + Send + Sync + 'static>(&self) -> Result<&T> {
+    pub fn downcast_ref<T: Any + Send + Sync + 'static>(
+        &self,
+    ) -> std::result::Result<&T, BroomdogErr> {
         self.inner
             .downcast_ref::<T>()
             .with_context(|| DowncastRefSnafu {
@@ -178,7 +181,9 @@ impl TypeValue {
     }
 
     /// Attempt to downcast a mutable reference to the given parameterized type.
-    pub fn downcast_mut<T: Any + Send + Sync + 'static>(&mut self) -> Result<&mut T> {
+    pub fn downcast_mut<T: Any + Send + Sync + 'static>(
+        &mut self,
+    ) -> std::result::Result<&mut T, BroomdogErr> {
         let from = self.type_name();
         self.inner
             .downcast_mut::<T>()
@@ -254,7 +259,11 @@ impl From<TypeValue> for InnerLoan {
 }
 
 impl InnerLoan {
-    pub fn as_owned(&self, name: &'static str) -> Result<&TypeValue> {
+    pub fn is_owned(&self) -> bool {
+        matches!(self, InnerLoan::Owned(_))
+    }
+
+    pub fn as_owned(&self, name: &'static str) -> std::result::Result<&TypeValue, BroomdogErr> {
         match self {
             InnerLoan::Owned(a) => Ok(a),
             InnerLoan::Loan(_) => Err(BroomdogErr::Loan { name }),
@@ -262,7 +271,10 @@ impl InnerLoan {
         }
     }
 
-    pub fn as_owned_mut(&mut self, name: &'static str) -> Result<&mut TypeValue> {
+    pub fn as_owned_mut(
+        &mut self,
+        name: &'static str,
+    ) -> std::result::Result<&mut TypeValue, BroomdogErr> {
         match self {
             InnerLoan::Owned(a) => Ok(a),
             InnerLoan::Loan(_) => Err(BroomdogErr::Loan { name }),
@@ -270,39 +282,56 @@ impl InnerLoan {
         }
     }
 
-    pub fn into_owned(self, name: &'static str) -> Result<TypeValue> {
+    pub fn into_owned(self, name: &'static str) -> std::result::Result<TypeValue, InnerLoan> {
         match self {
             InnerLoan::Owned(value) => Ok(value),
-            InnerLoan::Loan(arc) => {
-                let value = Arc::try_unwrap(arc)
-                    .ok()
-                    .with_context(|| LoanSnafu { name })?;
-                log::trace!("unified {name}");
-                Ok(value)
-            }
+            InnerLoan::Loan(arc) => match Arc::try_unwrap(arc) {
+                Ok(value) => {
+                    log::trace!("unified {name}");
+                    Ok(value)
+                }
+                Err(arc) => Err(InnerLoan::Loan(arc)),
+            },
             InnerLoan::LoanMut(arc_mut_opt) => {
-                let may_value = arc_mut_opt.lock().unwrap().take();
-                let value = may_value.with_context(|| ExclusiveLoanSnafu { name })?;
-                log::trace!("unified {name}");
-                Ok(value)
+                let mut guard = arc_mut_opt.lock().unwrap();
+                let may_value = guard.take();
+                drop(guard);
+                if let Some(value) = may_value {
+                    log::trace!("unified {name}");
+                    Ok(value)
+                } else {
+                    log::error!(
+                        "'{name}' cannot be converted to owned as it is loaned exclusively"
+                    );
+                    Err(InnerLoan::LoanMut(arc_mut_opt))
+                }
             }
         }
     }
 
-    pub fn into_loaned(self, name: &'static str) -> Result<Arc<TypeValue>> {
+    pub fn into_loaned(self, name: &'static str) -> std::result::Result<Arc<TypeValue>, InnerLoan> {
         match self {
             InnerLoan::Owned(value) => Ok(Arc::new(value)),
             InnerLoan::Loan(arc) => Ok(arc),
             InnerLoan::LoanMut(arc_mut_opt) => {
-                let may_value = arc_mut_opt.lock().unwrap().take();
-                let value = may_value.with_context(|| ExclusiveLoanSnafu { name })?;
-                log::trace!("converted exclusive {name} loan to non-exclusive");
-                Ok(Arc::new(value))
+                let maybe_value = arc_mut_opt.lock().unwrap().take();
+                if let Some(value) = maybe_value {
+                    log::trace!("converted exclusive {name} loan to non-exclusive");
+                    Ok(Arc::new(value))
+                } else {
+                    log::error!(
+                        "'{name}' cannot be converted into a loan as it is loaned exclusively"
+                    );
+                    Err(InnerLoan::LoanMut(arc_mut_opt))
+                }
             }
         }
     }
 
-    pub fn downcast_ref<T: Any + Send + Sync>(&self, name: &'static str) -> Result<&T> {
+    pub fn downcast_ref<T: Any + Send + Sync>(
+        &self,
+        name: &'static str,
+    ) -> std::result::Result<&T, BroomdogErr> {
         match self {
             InnerLoan::Owned(value) => value.downcast_ref(),
             InnerLoan::Loan(arc) => arc.downcast_ref(),
@@ -310,7 +339,10 @@ impl InnerLoan {
         }
     }
 
-    pub fn downcast_mut<T: Any + Send + Sync>(&mut self, name: &'static str) -> Result<&mut T> {
+    pub fn downcast_mut<T: Any + Send + Sync>(
+        &mut self,
+        name: &'static str,
+    ) -> std::result::Result<&mut T, BroomdogErr> {
         let owned = self.as_owned_mut(name)?;
         owned.downcast_mut()
     }
@@ -338,13 +370,20 @@ impl DerefMut for TypeMap {
 
 impl TypeMap {
     /// Insert a value into the type map.
-    pub fn insert_value<T: Any + Send + Sync>(&mut self, value: T) -> Result<Option<T>> {
+    pub fn insert_value<T: Any + Send + Sync>(
+        &mut self,
+        value: T,
+    ) -> std::result::Result<Option<T>, BroomdogErr> {
         let key = TypeKey::new::<T>();
         if let Some(old_value) = self
             .inner
             .insert(key, InnerLoan::Owned(TypeValue::new(value)))
         {
-            let old_value = old_value.into_owned(key.name())?;
+            let old_value = old_value
+                .into_owned(key.name())
+                .map_err(|_| BroomdogErr::Loan {
+                    name: std::any::type_name::<T>(),
+                })?;
             log::trace!("inserted {key} and am returning old value");
             old_value
                 .downcast()
@@ -360,7 +399,7 @@ impl TypeMap {
     }
 
     /// Returns a reference to the value of the given parameterized type.
-    pub fn get_value<T: Any + Send + Sync>(&self) -> Result<Option<&T>> {
+    pub fn get_value<T: Any + Send + Sync>(&self) -> std::result::Result<Option<&T>, BroomdogErr> {
         let key = TypeKey::new::<T>();
         if let Some(value) = self.inner.get(&key) {
             let t = value.downcast_ref(key.name())?;
@@ -372,7 +411,9 @@ impl TypeMap {
 
     /// Returns a mutable reference to the value of the given parameterized
     /// type.
-    pub fn get_value_mut<T: Any + Send + Sync>(&mut self) -> Result<Option<&mut T>> {
+    pub fn get_value_mut<T: Any + Send + Sync>(
+        &mut self,
+    ) -> std::result::Result<Option<&mut T>, BroomdogErr> {
         let key = TypeKey::new::<T>();
         if let Some(value) = self.inner.get_mut(&key) {
             let t = value.downcast_mut(key.name())?;
@@ -384,19 +425,27 @@ impl TypeMap {
 
     /// Indefinitely loans the typed value for sharing across threads.
     ///
+    /// Returns an error if the typed value is already exclusively loaned.
+    ///
     /// [`TypeMap::unify`] should be called before any call to
     /// [`TypeMap::get_value`] or [`TypeMap::get_value_mut`], or those will
     /// result in an error.
     ///
     /// Additionally, if [`TypeMap::loan_mut`] is called before the returned
     /// `Loan` is dropped, that call will err.
-    pub fn loan(&mut self, key: TypeKey) -> Result<Option<Loan>> {
-        //
+    pub fn loan(&mut self, key: TypeKey) -> std::result::Result<Option<Loan>, BroomdogErr> {
         if let Some(inner) = self.inner.remove(&key) {
             log::trace!("loaning {key}");
-            let arc = inner.into_loaned(key.name())?;
-            self.inner.insert(key, InnerLoan::Loan(arc.clone()));
-            Ok(Some(Loan { inner: arc }))
+            match inner.into_loaned(key.name()) {
+                Ok(arc) => {
+                    self.inner.insert(key, InnerLoan::Loan(arc.clone()));
+                    Ok(Some(Loan { inner: arc }))
+                }
+                Err(inner) => {
+                    self.inner.insert(key, inner);
+                    ExclusiveLoanSnafu { name: key.name() }.fail()
+                }
+            }
         } else {
             log::trace!("can't loan {key}, DNE");
             Ok(None)
@@ -411,33 +460,57 @@ impl TypeMap {
     ///
     /// Additionally, if [`TypeMap::loan`] or [`TypeMap::loan_mut`] are called
     /// again before the returned `LoanMut` is dropped, those calls will err.
-    pub fn loan_mut(&mut self, key: TypeKey) -> Result<Option<LoanMut>> {
+    pub fn loan_mut(&mut self, key: TypeKey) -> std::result::Result<Option<LoanMut>, BroomdogErr> {
         if let Some(value) = self.inner.remove(&key) {
             log::trace!("exclusively loaning {key}");
-            let value = value.into_owned(key.name())?;
-            let outer = Arc::new(Mutex::new(None));
-            self.inner.insert(key, InnerLoan::LoanMut(outer.clone()));
-            Ok(Some(LoanMut {
-                inner: Some(value),
-                outer,
-            }))
+            if value.is_owned() {
+                // UNWRAP: safe because we just checked that this value is owned
+                let value = value.into_owned(key.name()).unwrap();
+                let outer = Arc::new(Mutex::new(None));
+                self.inner.insert(key, InnerLoan::LoanMut(outer.clone()));
+                Ok(Some(LoanMut {
+                    inner: Some(value),
+                    outer,
+                }))
+            } else {
+                LoanSnafu { name: key.name() }.fail()
+            }
         } else {
             log::trace!("can't exclusively loan {key}, DNE");
             Ok(None)
         }
     }
 
+    /// Return whether all values are unified.
+    pub fn is_unified(&self) -> bool {
+        self.inner
+            .iter()
+            .all(|(_ty_key, loan): (_, &InnerLoan)| loan.is_owned())
+    }
 
     /// Attempts to unify the map, converting all loaned values back into owned
     /// values.
     ///
     /// This must be called before using [`TypeMap::get_value`] or
     /// [`TypeMap::get_value_mut`].
-    pub fn unify(&mut self) -> Result<()> {
-        for (key, inner_loan) in std::mem::take(&mut self.inner).into_iter() {
-            let value = inner_loan.into_owned(key.name())?;
-            let _ = self.inner.insert(key, InnerLoan::Owned(value));
+    ///
+    /// If the map fails to unify, the map will remain in a consistent state.
+    pub fn unify(&mut self) -> std::result::Result<(), BroomdogErr> {
+        let mut names = vec![];
+        for (key, inner_loan) in std::mem::take(&mut self.inner) {
+            let loan = match inner_loan.into_owned(key.name()) {
+                Ok(value) => InnerLoan::Owned(value),
+                Err(loan) => {
+                    names.push(key.name());
+                    loan
+                }
+            };
+            let _ = self.inner.insert(key, loan);
         }
-        Ok(())
+        if names.is_empty() {
+            Ok(())
+        } else {
+            ManyLoansSnafu { names }.fail()
+        }
     }
 }
