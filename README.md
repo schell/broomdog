@@ -36,7 +36,7 @@ Type erased maps have many uses, but `broomdog` was built to facilitate the foll
 * singleton resource storage layer for [`apecs`](https://github.com/schell/apecs)'s system schedule runner (`apecs` is an ECS library)
 * singleton resource storage layer for [`renderling`](https://github.com/schell/renderling)'s render node schedule runner (part of the render graph)
 
-It works particularly well with [`dagga`](https://github.com/schell/dagga), which is a DAG scheduler. In fact, `dagga` and `broomdog` are joined in [`moongraph`](https://github.com/schell/moongraph) with some nice helpers to form a DAG scheduling, resource managment and execution library.
+It works particularly well with [`dagga`](https://github.com/schell/dagga), which is a DAG scheduler. In fact, `dagga` and `broomdog` are joined in [`moongraph`](https://github.com/schell/moongraph) with some nice helpers to form a DAG scheduling, resource management and execution library.
 
 Together it's possible to define and run an extensible system of functions that share mutable resources, some of which may run in parallel.
 
